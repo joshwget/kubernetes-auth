@@ -17,7 +17,10 @@ const (
 	cattleURLEnv          = "CATTLE_URL"
 	cattleURLAccessKeyEnv = "CATTLE_ACCESS_KEY"
 	cattleURLSecretKeyEnv = "CATTLE_SECRET_KEY"
+
 	kubernetesMasterGroup = "system:masters"
+	adminUser             = "admin"
+	bootstrapUser         = "bootstrap"
 )
 
 type Provider struct {
@@ -50,7 +53,16 @@ func (p *Provider) Lookup(token string) (*k8sAuthentication.UserInfo, error) {
 
 	if token == p.bootstrapToken {
 		return &k8sAuthentication.UserInfo{
-			Username: "bootstrap",
+			Username: bootstrapUser,
+			Groups:   []string{kubernetesMasterGroup},
+		}, nil
+	}
+
+	resp, _ := getIdentityCollection(p.url, "")
+	if resp != nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		// Auth must be disabled, so give master access
+		return &k8sAuthentication.UserInfo{
+			Username: adminUser,
 			Groups:   []string{kubernetesMasterGroup},
 		}, nil
 	}
@@ -61,13 +73,7 @@ func (p *Provider) Lookup(token string) (*k8sAuthentication.UserInfo, error) {
 	}
 	token = string(decodedTokenBytes)
 
-	httpClient := &http.Client{
-		Timeout: time.Second * 30,
-	}
-
-	req, err := http.NewRequest("GET", p.url+"/identity", nil)
-	req.Header.Add("Authorization", token)
-	resp, err := httpClient.Do(req)
+	resp, err = getIdentityCollection(p.url, token)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +105,23 @@ func (p *Provider) Lookup(token string) (*k8sAuthentication.UserInfo, error) {
 	}
 
 	return nil, nil
+}
+
+func getIdentityCollection(url, token string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url+"/identity", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if token != "" {
+		req.Header.Add("Authorization", token)
+	}
+
+	httpClient := &http.Client{
+		Timeout: time.Second * 30,
+	}
+
+	return httpClient.Do(req)
 }
 
 func getUserInfoFromIdentityCollection(collection *client.IdentityCollection) k8sAuthentication.UserInfo {
