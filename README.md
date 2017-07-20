@@ -1,7 +1,7 @@
 kubernetes-auth
 ========
 
-A microservice that does micro things.
+Small service that bridges authentication between Rancher and Kubernetes.
 
 ## Building
 
